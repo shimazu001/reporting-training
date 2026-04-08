@@ -20,7 +20,7 @@
 <body>
 
 <div class="phone-screen">
-    <h1>119 AI通報訓練 v3.5</h1>
+    <h1>119 EMERGENCY</h1>
     <div id="status-light" class="status-light"></div>
     <div id="timer">00:00</div>
     <div id="log">通報ボタンを押して開始</div>
@@ -38,6 +38,7 @@
     let step = 1;
     let isFinished = false; 
     let isSpeaking = false;
+    let isWaitingResponse = false; // 次のステップの回答を待っているかどうかのフラグ
     let recognition;
     let synth = window.speechSynthesis;
     let timerInterval;
@@ -79,10 +80,10 @@
         mainBtn.innerText = "切断";
         startTime = Date.now();
         startTimer();
-        step = 1; isFinished = false; totalConfidence = 0; recognitionCount = 0; infoScore = 0;
+        step = 1; isFinished = false; isWaitingResponse = false; totalConfidence = 0; recognitionCount = 0; infoScore = 0;
         logArea.innerHTML = "";
         addLog("通信開始...");
-        speak(scenario[1]);
+        speak(scenario[1], () => { isWaitingResponse = true; });
     }
 
     function stopEverything() {
@@ -105,9 +106,11 @@
         }, 1000);
     }
 
-    function speak(text, customEndCallback = null) {
+    function speak(text, callback = null) {
         if (isFinished) return;
         isSpeaking = true;
+        isWaitingResponse = false; // 話している間は回答待ちを解除
+        
         currentTimeout = setTimeout(() => {
             if (isFinished) return;
             const uttr = new SpeechSynthesisUtterance(text);
@@ -115,15 +118,12 @@
             uttr.onend = () => {
                 isSpeaking = false;
                 if (isFinished) return;
-                if (customEndCallback) {
-                    customEndCallback();
-                } else {
-                    listen();
-                }
+                if (callback) callback();
+                listen();
             };
             addLog("AI: " + text);
             synth.speak(uttr);
-        }, 500); 
+        }, 300); 
     }
 
     function listen() {
@@ -151,7 +151,7 @@
                 processFlow(transcript);
             } else {
                 addLog("（聞き取り不能）");
-                speak("恐れ入ります、もう一度詳しく教えていただけますか？");
+                speak("恐れ入ります、もう一度教えていただけますか？", () => { isWaitingResponse = true; });
             }
         };
     }
@@ -161,21 +161,21 @@
         if (step === 1) {
             if (result.includes("火事") || result.includes("救急")) {
                 step = 2; 
-                speak(scenario[2]);
+                speak(scenario[2], () => { isWaitingResponse = true; });
             } else {
-                speak("火事ですか？救急ですか？どちらか教えてください。");
+                speak("火事ですか？救急ですか？どちらか教えてください。", () => { isWaitingResponse = true; });
             }
-            return; // 処理を終了して次の音声待ちにする
+            return;
         } 
         
         // --- 処理2: 住所聴取 ---
         if (step === 2) {
             if (result.length > 4) {
                 infoScore += 2;
-                step = 4; // シナリオ3(状況確認)は話の途中でAIが言うため、内部ステップを4へ
-                speak(result + "、ですね。承知しました。次に、" + scenario[3]);
+                step = 4; // シナリオ3(状況確認)はAIが続けて言うため
+                speak(result + "、ですね。承知しました。次に、" + scenario[3], () => { isWaitingResponse = true; });
             } else {
-                speak("住所を正確に教えてください。");
+                speak("住所を正確に教えてください。", () => { isWaitingResponse = true; });
             }
             return;
         } 
@@ -184,20 +184,25 @@
         if (step === 4) {
             infoScore += 1;
             step = 5; 
-            speak(scenario[4]);
+            speak(scenario[4], () => { isWaitingResponse = true; });
             return;
         } 
 
-        // --- 処理5: 目印確認 (ここが修正の核心) ---
+        // --- 処理5: 目印確認 ---
         if (step === 5) {
             infoScore += 1;
-            step = 6; // 目印の回答を受け取ったら即座に「ステップ6」に移行
-            speak(scenario[5]); // 絶対に「あなたの名前と電話番号をおしえてください。」を言う
-            return; // ★重要：ここで終わらせることで、直後にステップ6の判定が動くのを防ぐ
+            // 目印の回答を受け取ったので、次は名前を聞くステップへ移行する準備
+            step = 6; 
+            // 質問6を発声し、言い終わるまで「回答待ちフラグ」を立てないことで突き抜けを防止
+            speak(scenario[6], () => {
+                isWaitingResponse = true; // 質問を言い終わってから、初めてユーザーの回答を受け付ける
+            });
+            return;
         } 
 
-        // --- 処理6: 名前と電話番号の適正確認 ---
+        // --- 処理6: 名前と電話番号 ---
         if (step === 6) {
+            // isWaitingResponseがfalseの間（AIがまだ質問している間）は判定を行わない
             const hasNumber = /\d/.test(result);
             if (result.length >= 5 && hasNumber) {
                 infoScore += 3;
@@ -205,10 +210,9 @@
                 speak(scenario[7], () => {
                     setTimeout(() => { if(!isFinished) showScore(); }, 2000);
                 });
-            } else if (!hasNumber) {
-                speak("電話番号が聞き取れません。番号も含めてもう一度教えてください。");
             } else {
-                speak("お名前と電話番号をもう一度詳しく教えてください。");
+                // 電話番号がない、または情報不足の場合はここへ
+                speak("電話番号が聞き取れません。番号も含めてもう一度教えてください。", () => { isWaitingResponse = true; });
             }
             return;
         }
