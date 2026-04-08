@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>119番 通報訓練システム</title>
     <style>
-        body { font-family: 'Helvetica Neue', Arial, sans-serif; background: #222; color: #fff; text-align: center; padding: 20px; touch-action: manipulation; }
-        .phone-screen { max-width: 400px; margin: auto; background: #333; border-radius: 30px; padding: 40px 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 4px solid #444; position: relative; }
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; background: #222; color: #fff; text-align: center; padding: 20px; touch-action: manipulation; margin: 0; }
+        .phone-screen { max-width: 400px; margin: 20px auto; background: #333; border-radius: 30px; padding: 40px 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 4px solid #444; position: relative; }
         .status-light { width: 15px; height: 15px; border-radius: 50%; background: #444; margin: 10px auto; transition: 0.3s; }
         .status-active { background: #ff3b30; box-shadow: 0 0 10px #ff3b30; }
         h1 { font-size: 1.4em; color: #fff; margin-bottom: 5px; letter-spacing: 1px; }
@@ -15,12 +15,13 @@
         button { width: 100px; height: 100px; border-radius: 50%; border: none; font-size: 1.2em; cursor: pointer; transition: 0.3s; font-weight: bold; -webkit-tap-highlight-color: transparent; }
         .start-btn { background: #4cd964; color: white; box-shadow: 0 4px 0 #2f9a41; }
         .stop-btn { background: #ff3b30; color: white; box-shadow: 0 4px 0 #b71c1c; }
+        footer { margin-top: 30px; font-size: 0.8em; color: #777; letter-spacing: 0.5px; }
     </style>
 </head>
 <body>
 
 <div class="phone-screen">
-    <h1>119 AI通報訓練 v1.1</h1>
+    <h1>119 AI通報訓練</h1>
     <div id="status-light" class="status-light"></div>
     <div id="timer">00:00</div>
     <div id="log">通報ボタンを押して開始</div>
@@ -28,6 +29,10 @@
         <button id="mainBtn" class="start-btn">通報</button>
     </div>
 </div>
+
+<footer>
+    &copy;2026 NAKADA INDUSTRIAL CO.,LTD
+</footer>
 
 <script>
     const mainBtn = document.getElementById('mainBtn');
@@ -150,23 +155,19 @@
     }
 
     function processFlow(result) {
-        // ステップ1: 火事・救急の確認
         if (step === 1) {
             if (result.includes("火事") || result.includes("救急")) {
-                step = 2; 
-                speak(scenario[2]);
+                step = 2; speak(scenario[2]);
             } else {
                 speak("火事ですか？救急ですか？どちらか教えてください。");
             }
             return;
         } 
         
-        // ステップ2: 住所の確認
         if (step === 2) {
             if (result.length > 4) {
                 infoScore += 2;
-                step = 3; // 内部的なステップを3へ
-                // シナリオ3(火災状況)を質問
+                step = 3; 
                 speak(result + "、ですね。承知しました。次に、" + scenario[3]);
             } else {
                 speak("住所を正確に教えてください。");
@@ -174,7 +175,6 @@
             return;
         } 
 
-        // ステップ3: 火災状況の回答後 → 負傷者の確認へ
         if (step === 3) {
             infoScore += 1;
             step = 4;
@@ -182,23 +182,20 @@
             return;
         }
 
-        // ステップ4: 負傷者の回答後 → 目標物の確認へ
         if (step === 4) {
             infoScore += 1;
             step = 5;
-            speak(scenario[5]); // 「あなたの今いる場所の目標や目印となるものがありますか？」
+            speak(scenario[5]);
             return;
         }
 
-        // ステップ5: 目標物の回答後 → 名前・電話番号の確認へ
         if (step === 5) {
             infoScore += 1;
             step = 6;
-            speak(scenario[6]); // 「あなたの名前と電話番号をおしえてください。」
+            speak(scenario[6]);
             return;
         }
 
-        // ステップ6: 名前・電話番号の回答後 → 終了・採点へ
         if (step === 6) {
             const hasNumber = /\d/.test(result);
             if (result.length >= 5 && hasNumber) {
