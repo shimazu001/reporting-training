@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -15,18 +16,15 @@
         button { width: 100px; height: 100px; border-radius: 50%; border: none; font-size: 1.2em; cursor: pointer; transition: 0.3s; font-weight: bold; -webkit-tap-highlight-color: transparent; }
         .start-btn { background: #4cd964; color: white; box-shadow: 0 4px 0 #2f9a41; }
         .stop-btn { background: #ff3b30; color: white; box-shadow: 0 4px 0 #b71c1c; }
-        button:active { transform: translateY(2px); box-shadow: none; }
     </style>
 </head>
 <body>
 
 <div class="phone-screen">
-    <h1>119 EMERGENCY v3.3</h1>
+    <h1>119 AI通報訓練 v3.4</h1>
     <div id="status-light" class="status-light"></div>
     <div id="timer">00:00</div>
-    
     <div id="log">通報ボタンを押して開始</div>
-
     <div class="btn-area">
         <button id="mainBtn" class="start-btn">通報</button>
     </div>
@@ -47,7 +45,6 @@
     let startTime;
     let currentTimeout = null;
 
-    // 採点用変数
     let totalConfidence = 0;
     let recognitionCount = 0;
     let infoScore = 0;
@@ -161,7 +158,8 @@
     }
 
     function processFlow(result) {
-        // --- STEP 1: 火事か救急か ---
+        // 各ifブロックの最後に必ず return を入れ、1回の回答で1ステップずつしか進まないように制御します
+
         if (step === 1) {
             if (result.includes("火事") || result.includes("救急")) {
                 step = 2; speak(scenario[2]);
@@ -171,7 +169,6 @@
             return;
         } 
         
-        // --- STEP 2: 住所 ---
         if (step === 2) {
             if (result.length > 4) {
                 infoScore += 2;
@@ -183,7 +180,6 @@
             return;
         } 
 
-        // --- STEP 4: 負傷者 ---
         if (step === 4) {
             infoScore += 1;
             step = 5; 
@@ -191,17 +187,17 @@
             return;
         } 
 
-        // --- STEP 5: 目印 ---
         if (step === 5) {
+            // 目印の回答を受け取った時
             infoScore += 1;
-            step = 6; 
+            step = 6; // ここで次に進む準備をする
             speak(scenario[5]); // 質問：「あなたの名前と電話番号をおしえてください。」
-            return;
+            return; // ここで終了し、ユーザーの回答を待つ
         } 
 
-        // --- STEP 6: 名前と電話番号 ---
         if (step === 6) {
-            const hasNumber = /\d/.test(result); // 数字が含まれているか確認
+            // ここは「名前と電話番号をおしえてください」と言われた後の回答が来る場所
+            const hasNumber = /\d/.test(result);
             if (result.length >= 5 && hasNumber) {
                 infoScore += 3;
                 step = 7;
