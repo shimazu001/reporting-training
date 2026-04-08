@@ -20,7 +20,7 @@
 <body>
 
 <div class="phone-screen">
-    <h1>119 AI通報訓練 v1.0</h1>
+    <h1>119 AI通報訓練 v1.1</h1>
     <div id="status-light" class="status-light"></div>
     <div id="timer">00:00</div>
     <div id="log">通報ボタンを押して開始</div>
@@ -53,7 +53,7 @@
         recognition = new SpeechRecognition();
         recognition.lang = 'ja-JP';
         recognition.interimResults = false;
-        recognition.continuous = false; // 無音を検知して自動で止まる設定
+        recognition.continuous = false;
     }
 
     const scenario = {
@@ -107,14 +107,12 @@
 
     function speak(text, callback = null) {
         isSpeaking = true;
-        
         currentTimeout = setTimeout(() => {
             const uttr = new SpeechSynthesisUtterance(text);
             uttr.lang = 'ja-JP';
             uttr.onend = () => {
                 isSpeaking = false;
                 if (callback) callback();
-                // 訓練が継続中であれば、話し終わった直後に聞き取りを開始
                 if (!isFinished) listen();
             };
             addLog("AI: " + text);
@@ -138,17 +136,13 @@
 
         recognition.onend = () => {
             statusLight.classList.remove('status-active');
-            // AIが話し始めた場合や訓練終了時は何もしない
             if (isFinished || isSpeaking) return;
-
             const transcript = recognition.userData || "";
             recognition.userData = ""; 
 
-            // 無音状態でonendが来たとき、文字が入っていれば処理へ、空なら再度聞き取り
             if (transcript.trim() !== "") {
                 processFlow(transcript);
             } else {
-                // 何も聞こえなかった場合、ユーザーが話し始めるまでループさせず、一度促す
                 addLog("（聞き取り不能）");
                 speak("恐れ入ります、もう一度教えていただけますか？");
             }
@@ -156,19 +150,23 @@
     }
 
     function processFlow(result) {
+        // ステップ1: 火事・救急の確認
         if (step === 1) {
             if (result.includes("火事") || result.includes("救急")) {
-                step = 2; speak(scenario[2]);
+                step = 2; 
+                speak(scenario[2]);
             } else {
                 speak("火事ですか？救急ですか？どちらか教えてください。");
             }
             return;
         } 
         
+        // ステップ2: 住所の確認
         if (step === 2) {
             if (result.length > 4) {
                 infoScore += 2;
-                step = 4; 
+                step = 3; // 内部的なステップを3へ
+                // シナリオ3(火災状況)を質問
                 speak(result + "、ですね。承知しました。次に、" + scenario[3]);
             } else {
                 speak("住所を正確に教えてください。");
@@ -176,26 +174,37 @@
             return;
         } 
 
-        if (step === 4) {
+        // ステップ3: 火災状況の回答後 → 負傷者の確認へ
+        if (step === 3) {
             infoScore += 1;
-            step = 5; 
+            step = 4;
             speak(scenario[4]);
             return;
-        } 
+        }
 
+        // ステップ4: 負傷者の回答後 → 目標物の確認へ
+        if (step === 4) {
+            infoScore += 1;
+            step = 5;
+            speak(scenario[5]); // 「あなたの今いる場所の目標や目印となるものがありますか？」
+            return;
+        }
+
+        // ステップ5: 目標物の回答後 → 名前・電話番号の確認へ
         if (step === 5) {
             infoScore += 1;
-            step = 6; 
-            speak(scenario[6]);
+            step = 6;
+            speak(scenario[6]); // 「あなたの名前と電話番号をおしえてください。」
             return;
-        } 
+        }
 
+        // ステップ6: 名前・電話番号の回答後 → 終了・採点へ
         if (step === 6) {
             const hasNumber = /\d/.test(result);
             if (result.length >= 5 && hasNumber) {
                 infoScore += 3;
                 step = 7;
-                isFinished = true; // 採点フェーズに入るため終了フラグを立てる
+                isFinished = true;
                 speak(scenario[7], () => {
                     setTimeout(() => { showScore(); }, 2000);
                 });
