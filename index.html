@@ -38,7 +38,6 @@
     let step = 1;
     let isFinished = false; 
     let isSpeaking = false;
-    let isWaitingResponse = false; 
     let recognition;
     let synth = window.speechSynthesis;
     let timerInterval;
@@ -54,7 +53,7 @@
         recognition = new SpeechRecognition();
         recognition.lang = 'ja-JP';
         recognition.interimResults = false;
-        recognition.continuous = false;
+        recognition.continuous = false; // 無音を検知して自動で止まる設定
     }
 
     const scenario = {
@@ -80,10 +79,10 @@
         mainBtn.innerText = "切断";
         startTime = Date.now();
         startTimer();
-        step = 1; isFinished = false; isWaitingResponse = false; totalConfidence = 0; recognitionCount = 0; infoScore = 0;
+        step = 1; isFinished = false; totalConfidence = 0; recognitionCount = 0; infoScore = 0;
         logArea.innerHTML = "";
         addLog("通信開始...");
-        speak(scenario[1], () => { isWaitingResponse = true; });
+        speak(scenario[1]);
     }
 
     function stopEverything() {
@@ -107,9 +106,7 @@
     }
 
     function speak(text, callback = null) {
-        if (isFinished && !text.includes("採点")) return; // 終了後も採点結果だけは話す
         isSpeaking = true;
-        isWaitingResponse = false; 
         
         currentTimeout = setTimeout(() => {
             const uttr = new SpeechSynthesisUtterance(text);
@@ -117,7 +114,7 @@
             uttr.onend = () => {
                 isSpeaking = false;
                 if (callback) callback();
-                // isFinishedがfalse、かつcallbackが指定されている場合（＝質問時）のみ聞き取り開始
+                // 訓練が継続中であれば、話し終わった直後に聞き取りを開始
                 if (!isFinished) listen();
             };
             addLog("AI: " + text);
@@ -126,13 +123,11 @@
     }
 
     function listen() {
-        // すでに終了しているか、AIが話している最中なら聞き取らない
         if (isFinished || isSpeaking) return;
         statusLight.classList.add('status-active');
         try { recognition.start(); } catch(e) {}
 
         recognition.onresult = (event) => {
-            if (isFinished) return;
             const result = event.results[0][0].transcript;
             const confidence = event.results[0][0].confidence;
             addLog("あなた: " + result);
@@ -143,15 +138,19 @@
 
         recognition.onend = () => {
             statusLight.classList.remove('status-active');
+            // AIが話し始めた場合や訓練終了時は何もしない
             if (isFinished || isSpeaking) return;
+
             const transcript = recognition.userData || "";
             recognition.userData = ""; 
 
+            // 無音状態でonendが来たとき、文字が入っていれば処理へ、空なら再度聞き取り
             if (transcript.trim() !== "") {
                 processFlow(transcript);
             } else {
+                // 何も聞こえなかった場合、ユーザーが話し始めるまでループさせず、一度促す
                 addLog("（聞き取り不能）");
-                speak("恐れ入ります、もう一度教えていただけますか？", () => { isWaitingResponse = true; });
+                speak("恐れ入ります、もう一度教えていただけますか？");
             }
         };
     }
@@ -159,9 +158,9 @@
     function processFlow(result) {
         if (step === 1) {
             if (result.includes("火事") || result.includes("救急")) {
-                step = 2; speak(scenario[2], () => { isWaitingResponse = true; });
+                step = 2; speak(scenario[2]);
             } else {
-                speak("火事ですか？救急ですか？どちらか教えてください。", () => { isWaitingResponse = true; });
+                speak("火事ですか？救急ですか？どちらか教えてください。");
             }
             return;
         } 
@@ -170,9 +169,9 @@
             if (result.length > 4) {
                 infoScore += 2;
                 step = 4; 
-                speak(result + "、ですね。承知しました。次に、" + scenario[3], () => { isWaitingResponse = true; });
+                speak(result + "、ですね。承知しました。次に、" + scenario[3]);
             } else {
-                speak("住所を正確に教えてください。", () => { isWaitingResponse = true; });
+                speak("住所を正確に教えてください。");
             }
             return;
         } 
@@ -180,14 +179,14 @@
         if (step === 4) {
             infoScore += 1;
             step = 5; 
-            speak(scenario[4], () => { isWaitingResponse = true; });
+            speak(scenario[4]);
             return;
         } 
 
         if (step === 5) {
             infoScore += 1;
             step = 6; 
-            speak(scenario[6], () => { isWaitingResponse = true; });
+            speak(scenario[6]);
             return;
         } 
 
@@ -196,13 +195,12 @@
             if (result.length >= 5 && hasNumber) {
                 infoScore += 3;
                 step = 7;
-                // ここでisFinishedをtrueにすることで、次のセリフ以降音声入力を止める
-                isFinished = true; 
+                isFinished = true; // 採点フェーズに入るため終了フラグを立てる
                 speak(scenario[7], () => {
                     setTimeout(() => { showScore(); }, 2000);
                 });
             } else {
-                speak("電話番号が聞き取れません。番号も含めてもう一度教えてください。", () => { isWaitingResponse = true; });
+                speak("電話番号が聞き取れません。番号も含めてもう一度教えてください。");
             }
             return;
         }
@@ -214,7 +212,6 @@
         finalScore = Math.min(Math.max(Math.round(finalScore), 1), 10);
 
         const scoreText = `訓練お疲れ様でした。採点の結果、10点満点中、${finalScore}点です。滑舌や情報の正確さを意識して、引き続き訓練に励んでください。`;
-        // 採点結果を話す。isFinishedはすでにtrueなのでlisten()は起動しない。
         speak(scoreText, () => {
             playDisconnectSound();
         });
