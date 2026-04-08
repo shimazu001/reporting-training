@@ -62,7 +62,7 @@
         3: "どこが燃えていますか？煙は出ていますか？",
         4: "けがをされている方はいますか？",
         5: "あなたの今いる場所の目標や目印となるものがありますか？",
-        6: "あなたの名前と連絡先の電話番号をおしえてください。",
+        6: "あなたの名前と電話番号をおしえてください。",
         7: "判りました。以上で通報訓練を終わります。これから採点をしますので少しお待ちください。"
     };
 
@@ -92,7 +92,7 @@
         clearInterval(timerInterval);
         if (currentTimeout) clearTimeout(currentTimeout);
         statusLight.classList.remove('status-active');
-        addLog("--- 訓練を強制終了しました ---");
+        addLog("--- 訓練を終了しました ---");
         setTimeout(() => { location.reload(); }, 1200);
     }
 
@@ -135,35 +135,23 @@
             if (isFinished) return;
             const result = event.results[0][0].transcript;
             const confidence = event.results[0][0].confidence;
-
             addLog("あなた: " + result);
             totalConfidence += confidence;
             recognitionCount++;
-            
-            // 入力があった場合のみuserDataに保存
             recognition.userData = result;
         };
 
         recognition.onend = () => {
             statusLight.classList.remove('status-active');
             if (isFinished || isSpeaking) return;
-
             const transcript = recognition.userData || "";
             recognition.userData = ""; 
 
-            // 入力内容の適正確認
             if (transcript.trim() !== "") {
                 processFlow(transcript);
             } else {
-                // 何も答えていない場合
-                addLog("（無音または認識不能）");
-                if (step === 6) {
-                    speak("お名前と電話番号が聞き取れません。もう一度教えてください。");
-                } else if (step === 1) {
-                    speak("火事ですか？救急ですか？はっきりとお願いします。");
-                } else {
-                    speak("恐れ入ります、もう一度教えていただけますか？");
-                }
+                addLog("（聞き取り不能）");
+                speak("恐れ入ります、もう一度詳しく教えていただけますか？");
             }
         };
     }
@@ -173,10 +161,10 @@
             if (result.includes("火事") || result.includes("救急")) {
                 step = 2; speak(scenario[2]);
             } else {
-                speak("火事か救急か、どちらでしょうか？");
+                speak("火事ですか？救急ですか？どちらか教えてください。");
             }
         } else if (step === 2) {
-            if (result.length > 3) {
+            if (result.length > 4) {
                 infoScore += 2;
                 speak(result + "、ですね。承知しました。次に、" + scenario[3]);
                 step = 4; 
@@ -190,15 +178,18 @@
             infoScore += 1;
             step = 6; speak(scenario[5]);
         } else if (step === 6) {
-            // 名前と電話番号の適正確認（数字が含まれているか、ある程度の長さがあるか）
-            if (result.length >= 3 && /\d/.test(result)) {
+            // 適正確認：数字が含まれているか（電話番号）かつ、名前らしき文字があるか
+            const hasNumber = /\d/.test(result);
+            if (result.length >= 5 && hasNumber) {
                 infoScore += 3;
                 step = 7;
                 speak(scenario[6], () => {
                     setTimeout(() => { if(!isFinished) showScore(); }, 2000);
                 });
+            } else if (!hasNumber) {
+                speak("電話番号が聞き取れません。番号も含めてもう一度教えてください。");
             } else {
-                speak("連絡先の電話番号も含めて、もう一度詳しく教えてください。");
+                speak("お名前と電話番号をもう一度詳しく教えてください。");
             }
         }
     }
@@ -209,7 +200,7 @@
         let finalScore = (avgConfidence * 4) + (infoScore * 1.0) + 1;
         finalScore = Math.min(Math.max(Math.round(finalScore), 1), 10);
 
-        const scoreText = `あなたの訓練を採点しました。滑舌の良さ、情報の正確さを考慮した結果、10点満点中、${finalScore}点です。この結果を記録し、上長に報告してください。`;
+        const scoreText = `訓練お疲れ様でした。採点の結果、10点満点中、${finalScore}点です。滑舌や情報の正確さを意識して、引き続き訓練に励んでください。`;
         speak(scoreText, () => {
             if (!isFinished) playDisconnectSound();
         });
@@ -229,7 +220,7 @@
             osc.start(time); osc.stop(time + 0.5);
         }
         const now = audioCtx.currentTime;
-        for(let i=0; i<3; i++) beep(now + 2.0 + (i * 1.0));
+        for(let i=0; i<3; i++) beep(now + 1.0 + (i * 1.0));
         setTimeout(() => {
             if (!isFinished) {
                 clearInterval(timerInterval);
@@ -237,7 +228,7 @@
                 addLog("--- 訓練終了 ---");
                 mainBtn.style.display = "none";
             }
-        }, 5500);
+        }, 4500);
     }
 
     function addLog(msg) {
