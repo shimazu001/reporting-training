@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>119番 AI通報訓練システム</title>
+    <title>119番 通報訓練システム</title>
     <style>
         body { font-family: 'Helvetica Neue', Arial, sans-serif; background: #222; color: #fff; text-align: center; padding: 20px; touch-action: manipulation; }
         .phone-screen { max-width: 400px; margin: auto; background: #333; border-radius: 30px; padding: 40px 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 4px solid #444; position: relative; }
@@ -44,10 +44,9 @@
     let startTime;
     let currentTimeout = null;
 
-    // 採点用データ
-    let totalConfidence = 0; // 滑舌・聞き取りやすさの指標
+    let totalConfidence = 0;
     let recognitionCount = 0;
-    let infoScore = 0; // 正確な情報の指標
+    let infoScore = 0;
 
     const SpeechRecognition = window.webkitSpeechRecognition || window.SpeechRecognition;
     if (SpeechRecognition) {
@@ -93,7 +92,7 @@
         clearInterval(timerInterval);
         if (currentTimeout) clearTimeout(currentTimeout);
         statusLight.classList.remove('status-active');
-        addLog("--- 訓練を終了しリセットします ---");
+        addLog("--- 訓練を強制終了しました ---");
         setTimeout(() => { location.reload(); }, 1200);
     }
 
@@ -118,10 +117,8 @@
                 if (isFinished) return;
                 if (customEndCallback) {
                     customEndCallback();
-                } else if (step <= 6) {
+                } else {
                     listen();
-                } else if (step === 7) {
-                    setTimeout(() => { if(!isFinished) showScore(); }, 2000);
                 }
             };
             addLog("AI: " + text);
@@ -137,32 +134,36 @@
         recognition.onresult = (event) => {
             if (isFinished) return;
             const result = event.results[0][0].transcript;
-            const confidence = event.results[0][0].confidence; // 0.0〜1.0 の聞き取り精度
+            const confidence = event.results[0][0].confidence;
 
-            // ログ表示（名前・電話番号もここで確実に表示）
             addLog("あなた: " + result);
-
-            // 採点計算
             totalConfidence += confidence;
             recognitionCount++;
             
-            // 情報の正確性チェック（数字が含まれているか、特定のキーワードがあるか等）
-            if (step === 2 && result.length > 8) infoScore += 2; // 住所が長いか
-            if (step === 6 && /\d/.test(result)) infoScore += 2; // 電話番号（数字）が含まれているか
-            if (result.length > 5) infoScore += 1; // 全体的な情報量
-
+            // 入力があった場合のみuserDataに保存
             recognition.userData = result;
         };
 
         recognition.onend = () => {
             statusLight.classList.remove('status-active');
             if (isFinished || isSpeaking) return;
+
             const transcript = recognition.userData || "";
             recognition.userData = ""; 
-            if (transcript !== "") {
+
+            // 入力内容の適正確認
+            if (transcript.trim() !== "") {
                 processFlow(transcript);
             } else {
-                if (!isFinished) setTimeout(listen, 700);
+                // 何も答えていない場合
+                addLog("（無音または認識不能）");
+                if (step === 6) {
+                    speak("お名前と電話番号が聞き取れません。もう一度教えてください。");
+                } else if (step === 1) {
+                    speak("火事ですか？救急ですか？はっきりとお願いします。");
+                } else {
+                    speak("恐れ入ります、もう一度教えていただけますか？");
+                }
             }
         };
     }
@@ -171,32 +172,44 @@
         if (step === 1) {
             if (result.includes("火事") || result.includes("救急")) {
                 step = 2; speak(scenario[2]);
-            } else { speak(scenario[1]); }
+            } else {
+                speak("火事か救急か、どちらでしょうか？");
+            }
         } else if (step === 2) {
             if (result.length > 3) {
+                infoScore += 2;
                 speak(result + "、ですね。承知しました。次に、" + scenario[3]);
-                step = 4; // シナリオ3は2の応答に含める
-            } else { speak("もう一度、正確に住所を教えてください。"); }
-        } else if (step === 4) { step = 5; speak(scenario[4]);
-        } else if (step === 5) { step = 6; speak(scenario[5]);
-        } else if (step === 6) { step = 7; speak(scenario[6]);
-        } else if (step === 7) { step = 8; speak(scenario[7]); }
+                step = 4; 
+            } else {
+                speak("住所を正確に教えてください。");
+            }
+        } else if (step === 4) {
+            infoScore += 1;
+            step = 5; speak(scenario[4]);
+        } else if (step === 5) {
+            infoScore += 1;
+            step = 6; speak(scenario[5]);
+        } else if (step === 6) {
+            // 名前と電話番号の適正確認（数字が含まれているか、ある程度の長さがあるか）
+            if (result.length >= 3 && /\d/.test(result)) {
+                infoScore += 3;
+                step = 7;
+                speak(scenario[6], () => {
+                    setTimeout(() => { if(!isFinished) showScore(); }, 2000);
+                });
+            } else {
+                speak("連絡先の電話番号も含めて、もう一度詳しく教えてください。");
+            }
+        }
     }
 
     function showScore() {
         if (isFinished) return;
-
-        // 採点アルゴリズム
-        // 1. 聞き取り易さ(Confidence平均) 40%
-        // 2. 情報の網羅性(infoScore) 40%
-        // 3. 通報スピード（早ければ良いわけではないが、適切か）20%
         const avgConfidence = recognitionCount > 0 ? (totalConfidence / recognitionCount) : 0;
-        let finalScore = (avgConfidence * 4) + (infoScore * 0.8) + 2;
-        
-        finalScore = Math.min(Math.max(Math.round(finalScore), 1), 10); // 1〜10点に収める
+        let finalScore = (avgConfidence * 4) + (infoScore * 1.0) + 1;
+        finalScore = Math.min(Math.max(Math.round(finalScore), 1), 10);
 
         const scoreText = `あなたの訓練を採点しました。滑舌の良さ、情報の正確さを考慮した結果、10点満点中、${finalScore}点です。この結果を記録し、上長に報告してください。`;
-        
         speak(scoreText, () => {
             if (!isFinished) playDisconnectSound();
         });
@@ -224,7 +237,7 @@
                 addLog("--- 訓練終了 ---");
                 mainBtn.style.display = "none";
             }
-        }, 5000);
+        }, 5500);
     }
 
     function addLog(msg) {
