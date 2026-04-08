@@ -9,7 +9,7 @@
         .phone-screen { max-width: 400px; margin: auto; background: #333; border-radius: 30px; padding: 40px 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 4px solid #444; position: relative; }
         .status-light { width: 15px; height: 15px; border-radius: 50%; background: #444; margin: 10px auto; transition: 0.3s; }
         .status-active { background: #ff3b30; box-shadow: 0 0 10px #ff3b30; }
-        h1 { font-size: 1.2em; color: #aaa; margin-bottom: 5px; }
+        h1 { font-size: 1.4em; color: #fff; margin-bottom: 5px; letter-spacing: 1px; }
         #timer { font-size: 2.5em; margin: 10px 0; font-family: monospace; color: #fff; }
         #log { font-size: 0.9em; height: 180px; overflow-y: auto; text-align: left; background: #111; padding: 15px; margin: 20px 0; border-radius: 10px; color: #0f0; border: 1px solid #444; line-height: 1.4; }
         button { width: 100px; height: 100px; border-radius: 50%; border: none; font-size: 1.2em; cursor: pointer; transition: 0.3s; font-weight: bold; -webkit-tap-highlight-color: transparent; }
@@ -20,7 +20,7 @@
 <body>
 
 <div class="phone-screen">
-    <h1>119 AI通報訓練 v3.6</h1>
+    <h1>119 ＡＩ通報訓練 v1.0</h1>
     <div id="status-light" class="status-light"></div>
     <div id="timer">00:00</div>
     <div id="log">通報ボタンを押して開始</div>
@@ -38,7 +38,7 @@
     let step = 1;
     let isFinished = false; 
     let isSpeaking = false;
-    let isWaitingResponse = false; // 次のステップの回答を待っているかどうかのフラグ
+    let isWaitingResponse = false; 
     let recognition;
     let synth = window.speechSynthesis;
     let timerInterval;
@@ -107,19 +107,18 @@
     }
 
     function speak(text, callback = null) {
-        if (isFinished) return;
+        if (isFinished && !text.includes("採点")) return; // 終了後も採点結果だけは話す
         isSpeaking = true;
-        isWaitingResponse = false; // 話している間は回答待ちを解除
+        isWaitingResponse = false; 
         
         currentTimeout = setTimeout(() => {
-            if (isFinished) return;
             const uttr = new SpeechSynthesisUtterance(text);
             uttr.lang = 'ja-JP';
             uttr.onend = () => {
                 isSpeaking = false;
-                if (isFinished) return;
                 if (callback) callback();
-                listen();
+                // isFinishedがfalse、かつcallbackが指定されている場合（＝質問時）のみ聞き取り開始
+                if (!isFinished) listen();
             };
             addLog("AI: " + text);
             synth.speak(uttr);
@@ -127,6 +126,7 @@
     }
 
     function listen() {
+        // すでに終了しているか、AIが話している最中なら聞き取らない
         if (isFinished || isSpeaking) return;
         statusLight.classList.add('status-active');
         try { recognition.start(); } catch(e) {}
@@ -157,22 +157,19 @@
     }
 
     function processFlow(result) {
-        // --- 処理1: 火事か救急か ---
         if (step === 1) {
             if (result.includes("火事") || result.includes("救急")) {
-                step = 2; 
-                speak(scenario[2], () => { isWaitingResponse = true; });
+                step = 2; speak(scenario[2], () => { isWaitingResponse = true; });
             } else {
                 speak("火事ですか？救急ですか？どちらか教えてください。", () => { isWaitingResponse = true; });
             }
             return;
         } 
         
-        // --- 処理2: 住所聴取 ---
         if (step === 2) {
             if (result.length > 4) {
                 infoScore += 2;
-                step = 4; // シナリオ3(状況確認)はAIが続けて言うため
+                step = 4; 
                 speak(result + "、ですね。承知しました。次に、" + scenario[3], () => { isWaitingResponse = true; });
             } else {
                 speak("住所を正確に教えてください。", () => { isWaitingResponse = true; });
@@ -180,7 +177,6 @@
             return;
         } 
 
-        // --- 処理4: 負傷者確認 ---
         if (step === 4) {
             infoScore += 1;
             step = 5; 
@@ -188,30 +184,24 @@
             return;
         } 
 
-        // --- 処理5: 目印確認 ---
         if (step === 5) {
             infoScore += 1;
-            // 目印の回答を受け取ったので、次は名前を聞くステップへ移行する準備
             step = 6; 
-            // 質問6を発声し、言い終わるまで「回答待ちフラグ」を立てないことで突き抜けを防止
-            speak(scenario[6], () => {
-                isWaitingResponse = true; // 質問を言い終わってから、初めてユーザーの回答を受け付ける
-            });
+            speak(scenario[6], () => { isWaitingResponse = true; });
             return;
         } 
 
-        // --- 処理6: 名前と電話番号 ---
         if (step === 6) {
-            // isWaitingResponseがfalseの間（AIがまだ質問している間）は判定を行わない
             const hasNumber = /\d/.test(result);
             if (result.length >= 5 && hasNumber) {
                 infoScore += 3;
                 step = 7;
+                // ここでisFinishedをtrueにすることで、次のセリフ以降音声入力を止める
+                isFinished = true; 
                 speak(scenario[7], () => {
-                    setTimeout(() => { if(!isFinished) showScore(); }, 2000);
+                    setTimeout(() => { showScore(); }, 2000);
                 });
             } else {
-                // 電話番号がない、または情報不足の場合はここへ
                 speak("電話番号が聞き取れません。番号も含めてもう一度教えてください。", () => { isWaitingResponse = true; });
             }
             return;
@@ -219,19 +209,18 @@
     }
 
     function showScore() {
-        if (isFinished) return;
         const avgConfidence = recognitionCount > 0 ? (totalConfidence / recognitionCount) : 0;
         let finalScore = (avgConfidence * 4) + (infoScore * 1.0) + 1;
         finalScore = Math.min(Math.max(Math.round(finalScore), 1), 10);
 
         const scoreText = `訓練お疲れ様でした。採点の結果、10点満点中、${finalScore}点です。滑舌や情報の正確さを意識して、引き続き訓練に励んでください。`;
+        // 採点結果を話す。isFinishedはすでにtrueなのでlisten()は起動しない。
         speak(scoreText, () => {
-            if (!isFinished) playDisconnectSound();
+            playDisconnectSound();
         });
     }
 
     function playDisconnectSound() {
-        if (isFinished) return;
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         function beep(time) {
             const osc = audioCtx.createOscillator();
@@ -246,12 +235,9 @@
         const now = audioCtx.currentTime;
         for(let i=0; i<3; i++) beep(now + 1.0 + (i * 1.0));
         setTimeout(() => {
-            if (!isFinished) {
-                clearInterval(timerInterval);
-                isFinished = true;
-                addLog("--- 訓練終了 ---");
-                mainBtn.style.display = "none";
-            }
+            clearInterval(timerInterval);
+            addLog("--- 訓練終了 ---");
+            mainBtn.style.display = "none";
         }, 4500);
     }
 
