@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>119番 AI通報訓練システム</title>
+    <title>119番 通報訓練システム</title>
     <style>
         body { font-family: 'Helvetica Neue', Arial, sans-serif; background: #222; color: #fff; text-align: center; padding: 20px; touch-action: manipulation; }
         .phone-screen { max-width: 400px; margin: auto; background: #333; border-radius: 30px; padding: 40px 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 4px solid #444; position: relative; }
@@ -175,15 +175,17 @@
             infoScore += 1;
             step = 5; speak(scenario[4]);
         } else if (step === 5) {
+            // ステップ5の回答を受け取ったら、確実にステップ6へ進む
             infoScore += 1;
             step = 6; speak(scenario[5]);
         } else if (step === 6) {
-            // 適正確認：数字が含まれているか（電話番号）かつ、名前らしき文字があるか
+            // 名前と電話番号の判定
             const hasNumber = /\d/.test(result);
             if (result.length >= 5 && hasNumber) {
                 infoScore += 3;
-                step = 7;
-                speak(scenario[6], () => {
+                step = 7; // 次は終了アナウンス
+                // シナリオ7を話し終わった後に、採点処理（showScore）を呼ぶように指定
+                speak(scenario[7], () => {
                     setTimeout(() => { if(!isFinished) showScore(); }, 2000);
                 });
             } else if (!hasNumber) {
