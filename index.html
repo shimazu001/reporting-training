@@ -15,15 +15,18 @@
         button { width: 100px; height: 100px; border-radius: 50%; border: none; font-size: 1.2em; cursor: pointer; transition: 0.3s; font-weight: bold; -webkit-tap-highlight-color: transparent; }
         .start-btn { background: #4cd964; color: white; box-shadow: 0 4px 0 #2f9a41; }
         .stop-btn { background: #ff3b30; color: white; box-shadow: 0 4px 0 #b71c1c; }
+        button:active { transform: translateY(2px); box-shadow: none; }
     </style>
 </head>
 <body>
 
 <div class="phone-screen">
-    <h1>119 EMERGENCY　v3.2</h1>
+    <h1>119 EMERGENCY v3.3</h1>
     <div id="status-light" class="status-light"></div>
     <div id="timer">00:00</div>
+    
     <div id="log">通報ボタンを押して開始</div>
+
     <div class="btn-area">
         <button id="mainBtn" class="start-btn">通報</button>
     </div>
@@ -44,6 +47,7 @@
     let startTime;
     let currentTimeout = null;
 
+    // 採点用変数
     let totalConfidence = 0;
     let recognitionCount = 0;
     let infoScore = 0;
@@ -157,34 +161,50 @@
     }
 
     function processFlow(result) {
+        // --- STEP 1: 火事か救急か ---
         if (step === 1) {
             if (result.includes("火事") || result.includes("救急")) {
                 step = 2; speak(scenario[2]);
             } else {
                 speak("火事ですか？救急ですか？どちらか教えてください。");
             }
-        } else if (step === 2) {
+            return;
+        } 
+        
+        // --- STEP 2: 住所 ---
+        if (step === 2) {
             if (result.length > 4) {
                 infoScore += 2;
-                speak(result + "、ですね。承知しました。次に、" + scenario[3]);
                 step = 4; 
+                speak(result + "、ですね。承知しました。次に、" + scenario[3]);
             } else {
                 speak("住所を正確に教えてください。");
             }
-        } else if (step === 4) {
+            return;
+        } 
+
+        // --- STEP 4: 負傷者 ---
+        if (step === 4) {
             infoScore += 1;
-            step = 5; speak(scenario[4]);
-        } else if (step === 5) {
-            // ステップ5の回答を受け取ったら、確実にステップ6へ進む
+            step = 5; 
+            speak(scenario[4]);
+            return;
+        } 
+
+        // --- STEP 5: 目印 ---
+        if (step === 5) {
             infoScore += 1;
-            step = 6; speak(scenario[5]);
-        } else if (step === 6) {
-            // 名前と電話番号の判定
-            const hasNumber = /\d/.test(result);
+            step = 6; 
+            speak(scenario[5]); // 質問：「あなたの名前と電話番号をおしえてください。」
+            return;
+        } 
+
+        // --- STEP 6: 名前と電話番号 ---
+        if (step === 6) {
+            const hasNumber = /\d/.test(result); // 数字が含まれているか確認
             if (result.length >= 5 && hasNumber) {
                 infoScore += 3;
-                step = 7; // 次は終了アナウンス
-                // シナリオ7を話し終わった後に、採点処理（showScore）を呼ぶように指定
+                step = 7;
                 speak(scenario[7], () => {
                     setTimeout(() => { if(!isFinished) showScore(); }, 2000);
                 });
@@ -193,6 +213,7 @@
             } else {
                 speak("お名前と電話番号をもう一度詳しく教えてください。");
             }
+            return;
         }
     }
 
